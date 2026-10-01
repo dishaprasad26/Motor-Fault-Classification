@@ -1,0 +1,38 @@
+clear; clc; close all; rng(1);
+fs = 5000; winLen = 1000; nWin = 150;
+t = (0:winLen-1)/fs;
+
+F = zeros(2*nWin,4); y = strings(2*nWin,1);
+for k = 1:nWin
+    normal = 0.5*sin(2*pi*50*t) + 0.05*randn(size(t));
+    abn = 0.5*sin(2*pi*50*t) + 0.12*randn(size(t));
+    for i = randi(winLen-20,1,4)           % periodic impacts
+        abn(i:i+9) = abn(i:i+9) + 1.2*exp(-(0:9)/3);
+    end
+    F(k,:)      = feats(normal);  y(k)      = "normal";
+    F(nWin+k,:) = feats(abn);     y(nWin+k) = "abnormal";
+end
+
+% Plot sample raw signals
+figure; subplot(2,1,1); plot(t, normal); title('Normal (synthetic)');
+subplot(2,1,2); plot(t, abn); title('Abnormal (synthetic)'); xlabel('Time (s)');
+
+T = array2table(F,'VariableNames',{'RMS','Std','P2P','Kurt'});
+T.Label = categorical(y);
+
+cv = cvpartition(T.Label,'HoldOut',0.3);   % split BEFORE training
+Ttrain = T(training(cv),:);  Ttest = T(test(cv),:);
+
+mdl  = fitctree(Ttrain,'Label');
+pred = predict(mdl, Ttest);
+acc  = mean(pred == Ttest.Label);
+fprintf('Test accuracy: %.2f%%\n', acc*100);
+
+figure; confusionchart(Ttest.Label, pred);
+figure; gscatter(T.RMS, T.Kurt, T.Label); xlabel('RMS'); ylabel('Kurtosis');
+
+save('motor_model.mat','mdl'); writetable(T,'features.csv');
+
+function f = feats(x)
+f = [sqrt(mean(x.^2)), std(x), max(x)-min(x), kurtosis(x)];
+end
